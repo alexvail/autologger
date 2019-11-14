@@ -1,5 +1,9 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
+
+using autologger.Configuration;
+using autologger.Options;
 
 using Microsoft.Extensions.Configuration;
 
@@ -7,17 +11,34 @@ namespace autologger
 {
     internal class Program
     {
+        private const string ConfigFileName = "autologger.json";
+
         [STAThread]
-        private static void Main(string[] args)
+        public static void Main()
         {
-            var builder = new ConfigurationBuilder()
+            var configuration = BuildConfiguration();
+
+            if (configuration.LaunchMstscOnStart)
+            {
+                LaunchMstsc();
+            }
+
+            var autologger = new Autologger(configuration);
+            autologger.Run();
+        }
+
+        private static AutologgerConfiguration BuildConfiguration()
+        {
+            var configurationBuilder = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.json");
+                .AddJsonFile(ConfigFileName);
 
-            var config = builder.Build();
+            return configurationBuilder.Build().Get<AutologgerConfiguration>();
+        }
 
-            var autologger = new Autologger(config);
-            autologger.Main();
+        private static void LaunchMstsc()
+        {
+            Process.Start("mstsc.exe");
         }
     }
 }

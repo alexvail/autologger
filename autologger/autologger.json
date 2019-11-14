@@ -1,0 +1,14 @@
+﻿{
+  "LaunchMstscOnStart": true,
+  "Credentials": {
+    "Username": "",
+    "Password": "",
+    "Base32Secret": ""
+  },
+  "KeyCombinations": {
+    "WritePassword": "CTRL+1",
+    "WriteUsernamePasswordOtp": "CTRL+2",
+    "WritePasswordOtp": "CTRL+3",
+    "WriteOtp": "CTRL+4"
+  }
+}
