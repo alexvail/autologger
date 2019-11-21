@@ -1,11 +1,9 @@
-﻿namespace autologger.Options
+﻿namespace autologger.Configuration
 {
     public class Credentials
     {
-        public string Username { get; set; }
+        public string Username { get; set; } = string.Empty;
 
-        public string Password { get; set; }
-
-        public string Base32Secret { get; set; }
+        public string Password { get; set; } = string.Empty;
     }
 }

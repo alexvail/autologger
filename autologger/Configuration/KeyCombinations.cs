@@ -2,12 +2,12 @@
 {
     public class KeyCombinations
     {
-        public string WritePassword { get; set; }
+        public string WritePassword { get; set; } = "CTRL+1";
 
-        public string WriteUsernamePasswordOtp { get; set; }
+        public string WriteUsernamePasswordOtp { get; set; } = "CTRL+2";
 
-        public string WritePasswordOtp { get; set; }
+        public string WritePasswordOtp { get; set; } = "CTRL+3";
 
-        public string WriteOtp { get; set; }
+        public string WriteOtp { get; set; } = "CTRL+4";
     }
 }

@@ -15,16 +15,18 @@
     <PackageReference Include="Dapplo.Windows.Input" Version="0.11.6" />
     <PackageReference Include="Dapplo.Windows.Kernel32" Version="0.11.6" />
     <PackageReference Include="Dapplo.Windows.Messages" Version="0.11.6" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="3.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="3.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="3.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="3.0.1" />
     <PackageReference Include="Otp.NET" Version="1.2.2" />
+    <PackageReference Include="ZXing.Net" Version="0.16.4" />
+    <PackageReference Include="ZXing.Net.Bindings.ZKWeb.System.Drawing" Version="0.16.4" />
   </ItemGroup>
 
 
 
   <ItemGroup>
     <None Update="autologger.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 

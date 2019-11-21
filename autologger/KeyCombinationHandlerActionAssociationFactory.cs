@@ -11,10 +11,8 @@ namespace autologger
         public static IReadOnlyList<KeyCombinationHandlerAction> Create(
             params (string, Action<KeyboardHookEventArgs>)[] keyCombinationHandlerActionAssociations)
         {
-            return keyCombinationHandlerActionAssociations.Select(
-                    x => new KeyCombinationHandlerAction(
-                        CreateKeyCombinationHandler(x.Item1),
-                        x.Item2))
+            return keyCombinationHandlerActionAssociations
+                .Select(x => new KeyCombinationHandlerAction(CreateKeyCombinationHandler(x.Item1), x.Item2))
                 .ToList()
                 .AsReadOnly();
         }

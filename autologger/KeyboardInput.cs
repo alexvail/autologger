@@ -22,31 +22,14 @@ namespace autologger
             {
                 switch (c)
                 {
-                    case '←':
-                        KeyboardInputGenerator.KeyPresses(VirtualKeyCode.Left);
-                        break;
-                    case '→':
-                        KeyboardInputGenerator.KeyPresses(VirtualKeyCode.Right);
-                        break;
-                    case '↑':
-                        KeyboardInputGenerator.KeyPresses(VirtualKeyCode.Up);
-                        break;
-                    case '↓':
-                        KeyboardInputGenerator.KeyPresses(VirtualKeyCode.Down);
-                        break;
-                    case '\r':
-                        KeyboardInputGenerator.KeyPresses(VirtualKeyCode.Return);
-                        break;
-                    case CtrlSpace:
-                        KeyboardInputGenerator.KeyCombinationPress(VirtualKeyCode.Space, VirtualKeyCode.LeftControl);
-                        break;
-                    case OneSecondDelay:
-                        Thread.Sleep(1000);
-                        break;
-                    default:
-                        SendScanCodeInput(c);
-
-                        break;
+                    case '←': KeyboardInputGenerator.KeyPresses(VirtualKeyCode.Left); break;
+                    case '→': KeyboardInputGenerator.KeyPresses(VirtualKeyCode.Right); break;
+                    case '↑': KeyboardInputGenerator.KeyPresses(VirtualKeyCode.Up); break;
+                    case '↓': KeyboardInputGenerator.KeyPresses(VirtualKeyCode.Down); break;
+                    case '\r': KeyboardInputGenerator.KeyPresses(VirtualKeyCode.Return); break;
+                    case CtrlSpace: KeyboardInputGenerator.KeyCombinationPress(VirtualKeyCode.Space, VirtualKeyCode.LeftControl); break;
+                    case OneSecondDelay: Thread.Sleep(1000); break;
+                    default: SendScanCodeInput(c); break;
                 }
             }
         }

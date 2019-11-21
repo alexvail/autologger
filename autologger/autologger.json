@@ -1,9 +1,9 @@
 ﻿{
   "LaunchMstscOnStart": true,
+  "QrCodeImageFilePath": "",
   "Credentials": {
     "Username": "",
-    "Password": "",
-    "Base32Secret": ""
+    "Password": ""
   },
   "KeyCombinations": {
     "WritePassword": "CTRL+1",

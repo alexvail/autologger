@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -36,50 +35,46 @@ namespace autologger
 
         private readonly object _hookLock = new object();
 
-        private readonly object _executeReHookLock = new object();
+        private int _hookThreadId;
 
-        private volatile int _hookThreadId;
+        private int _executeReHook = 0;
 
-        private volatile bool _executeReHook;
-
-        public Autologger(AutologgerConfiguration autologgerConfiguration)
+        public Autologger(AutologgerConfiguration configuration)
         {
-            var totp = new Totp(Base32Encoding.ToBytes(autologgerConfiguration.Credentials.Base32Secret));
+            var totp = new Totp(
+                Base32Encoding.ToBytes(configuration.Otp.Base32Secret),
+                configuration.Otp.Step,
+                OtpHashMode.Sha1,
+                configuration.Otp.Size);
 
             this._keyCombinationHandlerActionAssociations = KeyCombinationHandlerActionAssociationFactory.Create(
-                (autologgerConfiguration.KeyCombinations.WritePassword, this.WritePasswordAction(autologgerConfiguration.Credentials.Password)),
-                (autologgerConfiguration.KeyCombinations.WriteUsernamePasswordOtp,
-                    this.WriteUsernamePasswordOtpAction(autologgerConfiguration.Credentials.Username, autologgerConfiguration.Credentials.Password, totp)),
-                (autologgerConfiguration.KeyCombinations.WritePasswordOtp, this.WritePasswordOtpAction(autologgerConfiguration.Credentials.Password, totp)),
-                (autologgerConfiguration.KeyCombinations.WriteOtp, this.WriteOtpAction(totp)));
+                (configuration.KeyCombinations.WritePassword, this.WritePasswordAction(configuration.Credentials.Password)),
+                (configuration.KeyCombinations.WriteUsernamePasswordOtp, this.WriteUsernamePasswordOtpAction(configuration.Credentials.Username, configuration.Credentials.Password, totp)),
+                (configuration.KeyCombinations.WritePasswordOtp, this.WritePasswordOtpAction(configuration.Credentials.Password, totp)),
+                (configuration.KeyCombinations.WriteOtp, this.WriteOtpAction(totp)));
         }
 
         public void Run()
         {
             this.HookAll();
 
-            var keyboardActionsThread = new Thread(this.ProcessKeyboardActions) { IsBackground = true };
+            var keyboardActionsThread = new Thread(this.ProcessKeyboardActions) { IsBackground = true, Priority = ThreadPriority.Highest };
             keyboardActionsThread.Start();
 
-            var reHookTimerThread = new Thread(this.ReHookTimer) { IsBackground = true };
+            var reHookTimerThread = new Thread(this.ReHookTimer) { IsBackground = true};
             reHookTimerThread.Start();
 
             try
             {
-                Console.WriteLine($"Main loop. ThreadId={Thread.CurrentThread.ManagedThreadId}");
+                Console.WriteLine($"Main loop. ThreadId={Kernel32Api.GetCurrentThreadId()}");
 
                 while (true)
                 {
                     MessageLoop.ProcessMessages(ProcessMessageHandler);
-
-                    lock (this._executeReHookLock)
+                    if (Interlocked.CompareExchange(ref this._executeReHook, 0, 1) == 1)
                     {
-                        if (this._executeReHook)
-                        {
-                            this._executeReHook = false;
-                            this.UnhookAll();
-                            this.HookAll();
-                        }
+                        this.UnhookAll();
+                        this.HookAll();
                     }
                 }
             }
@@ -120,24 +115,14 @@ namespace autologger
 
                 if (rdpWindowIsActive)
                 {
-                    lock (this._executeReHookLock)
+                    if (Interlocked.CompareExchange(ref this._executeReHook, 1, 0) == 0)
                     {
-                        if (!this._executeReHook)
-                        {
-                            this._executeReHook = true;
-                            PostThreadMessage((uint)this._hookThreadId, (uint)WindowsMessages.WM_QUIT, UIntPtr.Zero, IntPtr.Zero);
-                        }
+                        PostThreadMessage((uint)this._hookThreadId, (uint)WindowsMessages.WM_QUIT, UIntPtr.Zero, IntPtr.Zero);
                     }
                 }
 
                 Thread.Sleep(ReHookIntervalMs);
             }
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static bool ProcessMessageHandler(ref Msg msg)
-        {
-            return msg.Message != WindowsMessages.WM_QUIT;
         }
 
         private void ProcessKeyboardActions()
@@ -162,7 +147,9 @@ namespace autologger
         {
             lock (this._hookLock)
             {
-                this._hookThreadId = Kernel32Api.GetCurrentThreadId();
+                Interlocked.Exchange(ref this._hookThreadId, Kernel32Api.GetCurrentThreadId());
+
+                Console.WriteLine($"Subscribed all hooks. ThreadId={this._hookThreadId}");
 
                 this.SubscribeKeyHandlers();
             }
@@ -173,7 +160,7 @@ namespace autologger
             lock (this._hookLock)
             {
                 this.DisposeSubscribedKeyHandlers();
-                Debug.WriteLine($"Unsubscribed all hooks. ThreadId={Thread.CurrentThread.ManagedThreadId}");
+                Console.WriteLine($"Unsubscribed all hooks. ThreadId={Kernel32Api.GetCurrentThreadId()}");
             }
         }
 
@@ -199,7 +186,7 @@ namespace autologger
                 s.Dispose();
             }
 
-            Debug.WriteLine("Disposed all subscribed key handlers.");
+            Console.WriteLine("Disposed all subscribed key handlers.");
         }
 
         private void TypeStrings(params string[] strings)
@@ -219,6 +206,12 @@ namespace autologger
                         }
                     }
                 });
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool ProcessMessageHandler(ref Msg msg)
+        {
+            return msg.Message != WindowsMessages.WM_QUIT;
         }
 
         private static bool ShouldTab(int currentIndex, int arrayLength)
@@ -245,6 +238,6 @@ namespace autologger
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool PostThreadMessage(uint threadId, uint msg, UIntPtr wParam, IntPtr lParam);
+        private static extern bool PostThreadMessage(uint threadId, uint msg, UIntPtr wParam, IntPtr lParam);
     }
 }

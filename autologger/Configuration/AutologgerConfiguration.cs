@@ -1,13 +1,15 @@
-﻿using autologger.Options;
-
-namespace autologger.Configuration
+﻿namespace autologger.Configuration
 {
     public class AutologgerConfiguration
     {
-        public bool LaunchMstscOnStart { get; set; }
+        public bool LaunchMstscOnStart { get; set; } = true;
 
-        public Credentials Credentials { get; set; }
+        public string QrCodeImageFilePath { get; set; } = string.Empty;
 
-        public KeyCombinations KeyCombinations { get; set; }
+        public Credentials Credentials { get; set; } = new Credentials();
+
+        public Otp Otp { get; set; } = new Otp();
+
+        public KeyCombinations KeyCombinations { get; set; } = new KeyCombinations();
     }
 }

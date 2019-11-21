@@ -4,7 +4,7 @@ using Dapplo.Windows.Input.Keyboard;
 
 namespace autologger
 {
-    public class KeyCombinationHandlerAction
+    internal class KeyCombinationHandlerAction
     {
         public KeyCombinationHandlerAction(IKeyboardHookEventHandler keyboardHookEventHandler, Action<KeyboardHookEventArgs> action)
         {
@@ -12,8 +12,8 @@ namespace autologger
             this.Action = action;
         }
 
-        public IKeyboardHookEventHandler KeyboardHookEventHandler { get; set; }
+        public IKeyboardHookEventHandler KeyboardHookEventHandler { get; }
 
-        public Action<KeyboardHookEventArgs> Action { get; set; }
+        public Action<KeyboardHookEventArgs> Action { get; }
     }
 }
