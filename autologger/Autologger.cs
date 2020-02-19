@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -27,31 +28,38 @@ namespace autologger
 
         private const int DelayAfterTabMs = 500;
 
-        private readonly IReadOnlyList<KeyCombinationHandlerAction> _keyCombinationHandlerActionAssociations;
-
-        private readonly ConcurrentQueue<IDisposable> _keyCombinationHandlerSubscriptions = new ConcurrentQueue<IDisposable>();
+        private readonly IReadOnlyList<KeyCombinationHandlerAction> _keyCombinationHandlerActions;
 
         private readonly BlockingCollection<Action> _unprocessedKeyboardActions = new BlockingCollection<Action>(new ConcurrentQueue<Action>());
 
+        private readonly ConcurrentStack<IDisposable> _subscriptions = new ConcurrentStack<IDisposable>();
+        
         private readonly object _hookLock = new object();
 
         private int _hookThreadId;
 
         private int _executeReHook = 0;
 
+        private readonly Totp _totp;
+
+        private readonly AutologgerConfiguration _config;
+
         public Autologger(AutologgerConfiguration configuration)
         {
-            var totp = new Totp(
+            this._config = configuration;
+            this._totp = new Totp(
                 Base32Encoding.ToBytes(configuration.Otp.Base32Secret),
                 configuration.Otp.Step,
                 OtpHashMode.Sha1,
                 configuration.Otp.Size);
 
-            this._keyCombinationHandlerActionAssociations = KeyCombinationHandlerActionAssociationFactory.Create(
-                (configuration.KeyCombinations.WritePassword, this.WritePasswordAction(configuration.Credentials.Password)),
-                (configuration.KeyCombinations.WriteUsernamePasswordOtp, this.WriteUsernamePasswordOtpAction(configuration.Credentials.Username, configuration.Credentials.Password, totp)),
-                (configuration.KeyCombinations.WritePasswordOtp, this.WritePasswordOtpAction(configuration.Credentials.Password, totp)),
-                (configuration.KeyCombinations.WriteOtp, this.WriteOtpAction(totp)));
+            this._keyCombinationHandlerActions = new List<KeyCombinationHandlerAction>
+            {
+                new KeyCombinationHandlerAction(KeyCombinationHandlerActionAssociationFactory.CreateKeyCombinationHandler(configuration.KeyCombinations.WritePassword), this.WritePasswordEvent),
+                new KeyCombinationHandlerAction(KeyCombinationHandlerActionAssociationFactory.CreateKeyCombinationHandler(configuration.KeyCombinations.WriteUsernamePasswordOtp), this.WriteUsernamePasswordOtpEvent),
+                new KeyCombinationHandlerAction(KeyCombinationHandlerActionAssociationFactory.CreateKeyCombinationHandler(configuration.KeyCombinations.WritePasswordOtp), this.WritePasswordOtpEvent),
+                new KeyCombinationHandlerAction(KeyCombinationHandlerActionAssociationFactory.CreateKeyCombinationHandler(configuration.KeyCombinations.WriteOtp), this.WriteOtpEvent),
+            };
         }
 
         public void Run()
@@ -84,24 +92,43 @@ namespace autologger
             }
         }
 
-        private Action<KeyboardHookEventArgs> WriteOtpAction(Totp totp)
+        private void WritePasswordEvent(KeyboardHookEventArgs hookEventArgs)
         {
-            return x => this.TypeStrings(ComputeTotp(totp));
+            this._unprocessedKeyboardActions.Add(this.WritePasswordAction);
         }
 
-        private Action<KeyboardHookEventArgs> WritePasswordOtpAction(string password, Totp totp)
+        private void WriteUsernamePasswordOtpEvent(KeyboardHookEventArgs hookEventArgs)
         {
-            return x => this.TypeStrings(password, ComputeTotp(totp));
+            this._unprocessedKeyboardActions.Add(this.WriteUsernamePasswordOtpAction);
         }
 
-        private Action<KeyboardHookEventArgs> WriteUsernamePasswordOtpAction(string username, string password, Totp totp)
+        private void WritePasswordOtpEvent(KeyboardHookEventArgs hookEventArgs)
         {
-            return x => this.TypeStrings(username, password, ComputeTotp(totp));
+            this._unprocessedKeyboardActions.Add(this.WritePasswordOtpAction);
+        }
+        private void WriteOtpEvent(KeyboardHookEventArgs hookEventArgs)
+        {
+            this._unprocessedKeyboardActions.Add(this.WriteOtp);
         }
 
-        private Action<KeyboardHookEventArgs> WritePasswordAction(string password)
+        private void WriteOtp()
         {
-            return x => this.TypeStrings(password);
+            TypeStrings(this.ComputeTotp());
+        }
+
+        private void WritePasswordOtpAction()
+        {
+            TypeStrings(this._config.Credentials.Password, this.ComputeTotp());
+        }
+
+        private void WriteUsernamePasswordOtpAction()
+        {
+            TypeStrings(this._config.Credentials.Username, this._config.Credentials.Password, this.ComputeTotp());
+        }
+
+        private void WritePasswordAction()
+        {
+            TypeStrings(this._config.Credentials.Password);
         }
 
         private void ReHookTimer()
@@ -115,10 +142,8 @@ namespace autologger
 
                 if (rdpWindowIsActive)
                 {
-                    if (Interlocked.CompareExchange(ref this._executeReHook, 1, 0) == 0)
-                    {
-                        PostThreadMessage((uint)this._hookThreadId, (uint)WindowsMessages.WM_QUIT, UIntPtr.Zero, IntPtr.Zero);
-                    }
+                    Interlocked.Exchange(ref this._executeReHook, 1);
+                    PostThreadMessage((uint)this._hookThreadId, (uint)WindowsMessages.WM_QUIT, UIntPtr.Zero, IntPtr.Zero);
                 }
 
                 Thread.Sleep(ReHookIntervalMs);
@@ -149,7 +174,7 @@ namespace autologger
             {
                 Interlocked.Exchange(ref this._hookThreadId, Kernel32Api.GetCurrentThreadId());
 
-                Console.WriteLine($"Subscribed all hooks. ThreadId={this._hookThreadId}");
+                Debug.WriteLine($"Subscribed all hooks. ThreadId={this._hookThreadId}");
 
                 this.SubscribeKeyHandlers();
             }
@@ -160,52 +185,53 @@ namespace autologger
             lock (this._hookLock)
             {
                 this.DisposeSubscribedKeyHandlers();
-                Console.WriteLine($"Unsubscribed all hooks. ThreadId={Kernel32Api.GetCurrentThreadId()}");
+                Debug.WriteLine($"Unsubscribed all hooks. ThreadId={Kernel32Api.GetCurrentThreadId()}");
             }
         }
 
         private void SubscribeKeyHandlers()
         {
-            if (this._keyCombinationHandlerSubscriptions.Any())
+            if (!this._subscriptions.IsEmpty)
             {
                 throw new Exception("There should not be any subscriptions when subscribing key handlers.");
             }
 
-            foreach (var keyCombinationHandlerActionAssociation in this._keyCombinationHandlerActionAssociations)
+            foreach (var keyCombinationHandlerAction in this._keyCombinationHandlerActions)
             {
-                this._keyCombinationHandlerSubscriptions.Enqueue(
-                    KeyboardHook.KeyboardEvents.Where(keyCombinationHandlerActionAssociation.KeyboardHookEventHandler)
-                        .Subscribe(keyCombinationHandlerActionAssociation.Action));
+                var sub = KeyboardHook.KeyboardEvents.Where(keyCombinationHandlerAction.KeyboardHookEventHandler)
+                    .Subscribe(keyCombinationHandlerAction.Action);
+                this._subscriptions.Push(sub);
             }
         }
 
         private void DisposeSubscribedKeyHandlers()
         {
-            while (this._keyCombinationHandlerSubscriptions.TryDequeue(out var s))
+            while (this._subscriptions.TryPop(out var s))
             {
                 s.Dispose();
             }
 
-            Console.WriteLine("Disposed all subscribed key handlers.");
+            if (!this._subscriptions.IsEmpty)
+            {
+                throw new Exception("Should be empty...");
+            }
+
+            Debug.WriteLine("Disposed all subscribed key handlers.");
         }
 
-        private void TypeStrings(params string[] strings)
+        private static void TypeStrings(params string[] strings)
         {
-            this._unprocessedKeyboardActions.Add(
-                () =>
+            KeyboardInput.ReleaseModifierKeys();
+
+            for (var i = 0; i < strings.Length; i++)
+            {
+                TypeString(strings[i]);
+
+                if (ShouldTab(i, strings.Length))
                 {
-                    KeyboardInput.ReleaseModifierKeys();
-
-                    for (var i = 0; i < strings.Length; i++)
-                    {
-                        TypeString(strings[i]);
-
-                        if (ShouldTab(i, strings.Length))
-                        {
-                            TypeTab();
-                        }
-                    }
-                });
+                    TypeTab();
+                }
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -219,9 +245,9 @@ namespace autologger
             return arrayLength > 1 && (currentIndex == 0 || currentIndex < arrayLength - 1);
         }
 
-        private static string ComputeTotp(Totp totp)
+        private string ComputeTotp()
         {
-            return totp.ComputeTotp(DateTime.UtcNow);
+            return this._totp.ComputeTotp(DateTime.UtcNow);
         }
 
         private static void TypeString(string text)

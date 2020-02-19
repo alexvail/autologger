@@ -17,7 +17,7 @@ namespace autologger
                 .AsReadOnly();
         }
 
-        private static IKeyboardHookEventHandler CreateKeyCombinationHandler(string keyCombination)
+        public static IKeyboardHookEventHandler CreateKeyCombinationHandler(string keyCombination)
         {
             return new KeyCombinationHandler(KeyHelper.VirtualKeyCodesFromString(keyCombination)) { IgnoreInjected = false };
         }
